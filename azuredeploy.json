@@ -1,0 +1,140 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "siteName": {
+      "type": "string"
+    },
+    "vtextoken": {
+      "type": "string",
+      "defaultValue": "VTex Token"
+    } 
+    //,
+    //"powerbitoken": {
+    //  "type": "string",
+    //  "defaultValue": "PowerBi Token"
+    //}
+  },
+  "variables": {
+    "hostingPlanName": "vtex_powerbi",
+    "hostingPlanSku": "D1",
+    "repoUrl": "https://github.com/ViniciusSouza/AppInsightsTest.git",
+    "workerSize": "0",
+    "jobCollectionName": "vtexschedule",
+    "jobName": "omsschedule",
+    "AppInsightsName": "vtexdaydemo",
+    "InsightsID": "787213FC-E1A5-47A8-9613-799B96377793",
+    "AzureLocation": "Central US"
+  },
+  "resources": [
+    {
+      "apiVersion": "2015-08-01",
+      "name": "[variables('hostingPlanName')]",
+      "type": "Microsoft.Web/serverfarms",
+      //"location": "[resourceGroup().location]",
+      "location": "[variables('AzureLocation')]",
+      "tags": {
+        "displayName": "HostingPlan"
+      },
+      "sku": {
+        "name": "[variables('hostingPlanSku')]",
+        "capacity": "1"
+      },
+      "properties": {
+        "name": "[variables('hostingPlanName')]"
+      }
+    },
+    {
+      "apiVersion": "2014-04-01",
+      //"location": "[resourceGroup().location]",
+      "location":"[variables('AzureLocation')]",
+      "name": "[variables('AppInsightsName')]",
+      "type": "Microsoft.Insights/components",
+      "properties": { "applicationId": "[variables('InsightsID')" }
+    },
+    {
+      "apiVersion": "2015-08-01",
+      "name": "[parameters('siteName')]",
+      "type": "Microsoft.Web/sites",
+      //"location": "[resourceGroup().location]",
+      "location": "[variables('AzureLocation')]",
+      "dependsOn": [
+        "[concat('Microsoft.Web/serverFarms/', variables('hostingPlanName'))]"
+      ],
+      "tags": {
+        "[concat('hidden-related:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', variables('hostingPlanName'))]": "VtexDashBoard"
+      },
+      "properties": {
+        "name": "[parameters('siteName')]",
+        "serverFarmId": "[variables('hostingPlanName')]"
+      },
+      "resources": [
+        {
+          "apiVersion": "2015-08-01",
+          "type": "config",
+          "name": "appsettings",
+          "dependsOn": [
+            "[concat('Microsoft.Web/Sites/', parameters('siteName'))]",
+            "[concat('Microsoft.Insights/components/', variables('AppInsightsName'))]"
+          ],
+          "properties": {
+            "vtextoken": "[parameters('vtextoken')]",
+            //"powerbitoken": "[parameters('powerbitoken')]",
+            "AppInsigthsID": "[reference(concat('Microsoft.Insights/components/', variables('AppInsightsName'))).InstrumentationKey]"
+          }
+        },
+        {
+          "apiVersion": "2015-08-01",
+          "name": "web",
+          "type": "sourcecontrols",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"
+          ],
+          "properties": {
+            "RepoUrl": "[variables('repoUrl')]",
+            "branch": "master",
+            "IsManualIntegration": true
+          }
+        }
+      ]
+    },
+    {
+      "apiVersion": "2014-08-01-preview",
+      "type": "Microsoft.Scheduler/jobCollections",
+      "name": "[variables('jobCollectionName')]",
+      //"location": "[resourceGroup().location]",
+      "location": "[variables('AzureLocation')]",
+      "properties": {
+        "sku": { "name": "Standard" }
+      },
+      "resources": [
+        {
+          "apiVersion": "2014-08-01-preview",
+          "type": "jobs",
+          "name": "[variables('jobName')]",
+          "dependsOn": [
+            "[concat('Microsoft.Scheduler/jobCollections/', variables('jobCollectionName'))]"
+          ],
+          "properties": {
+            "state": "Enabled",
+            "action": {
+              "type": "HTTP",
+              "request": {
+                "uri": "[concat('http://', reference(resourceId('Microsoft.Web/sites', parameters('siteName'))).hostNames[0])]",
+                "method": "GET",
+                "retryPolicy": {
+                  "retryType": "None"
+                }
+              }
+            },
+            "recurrence": {
+              "interval": 5,
+              "frequency": "Minute"
+            }
+          }
+        }
+      ]
+    }
+
+  ]
+}
